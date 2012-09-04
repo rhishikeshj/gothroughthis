@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script>
+			function Subscribe()
+			{
+				channel_name = document.getElementById("channelName").value;
+				if (!!window.EventSource) {
+					var source = new EventSource('http://localhost:8080/subscribe?channel=' + channel_name);
+					console.log("message listener added !!")
+					source.addEventListener('message', function(e) {
+						console.log(e.data);
+						}, false);
+				} 
+			}
+		</script>
+	</head>
+	<body>
+
+		<h1>My First JavaScript</h1>
+		<input type="TEXT" id="channelName"><BR><BR>
+		<button type="button" onclick="Subscribe()">Display Date</button>
+	</body>
+</html> 
+
+
