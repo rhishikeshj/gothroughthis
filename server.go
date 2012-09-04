@@ -41,6 +41,15 @@ func subscribe(psc redis.PubSubConn, channel string) bool {
 	return true
 }
 
+func unsubscribe(psc redis.PubSubConn, channel string) bool {
+	err := psc.Unsubscribe(channel)
+	if err != nil {
+	//	panic(err)
+		return false
+	}
+	return true
+}
+
 func reciever (psc redis.PubSubConn) {
 	for {
 		switch n := psc.Receive().(type) {
@@ -88,9 +97,20 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channel s
 		subscribe(psc, request_channel)
 	}
 
-	fmt.Println("Coming here for serving a page ! hope this is printed multiple times !!")
 	/*This is a blocking call ! keep this as the end*/
 	channel_es.ServeHTTP(w, r)
+	if channel_es.ConsumersCount() == 1 {
+		go func () {
+			for {
+				if channel_es.ConsumersCount() == 0 {
+					channel_es.Close()
+					delete (channel_map, request_channel)
+					unsubscribe(psc, request_channel)
+					return
+				}
+			}
+		} ()
+	}
 }
 
 var connection redis.Conn

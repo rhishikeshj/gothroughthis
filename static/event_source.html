@@ -10,6 +10,7 @@
 					console.log("message listener added !!")
 					source.addEventListener('message', function(e) {
 						console.log(e.data);
+						source.close()
 						}, false);
 				} 
 			}
