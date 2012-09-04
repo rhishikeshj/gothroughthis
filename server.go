@@ -83,7 +83,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		channel := r.URL.String()[loc[1]:]
 		subscribe_handler(w, r, channel)
 	} else {
-		fmt.Fprintf(w, "Hi there, I love %s! %s", r.URL.Path[1:], r.URL.Query())
+		fmt.Fprintf(w, "Hi there, Try adding a subscription by doing a GET to /subscribe/<channel-name>")
 	}
 }
 
