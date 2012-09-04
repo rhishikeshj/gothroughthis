@@ -112,41 +112,5 @@ func main() {
 	http.HandleFunc("/", handler)
 
 	http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir("/home/jgn438/workspace/helpshift_assignment/go/src/gothroughthis/static"))))
-	//http.HandleFunc("/subscribe", subscribe_handler)
 	http.ListenAndServe(":8080", nil)
-
-
-	//reHandler := new(RegexpHandler)
-	//reHandler.AddRoute("/subscribe(/)?\\?channel=[a-zA-Z0-9]+", subscribe_handler)
-	//http.ListenAndServe(":8080", reHandler)
-
 }
-
-
-
-
-type route struct {
-        re *regexp.Regexp
-        handler func(http.ResponseWriter, *http.Request)
-}
-
-type RegexpHandler struct {
-        routes []*route
-}
-
-func (h *RegexpHandler) AddRoute(re string, handler func(http.ResponseWriter, *http.Request)) {
-        r := &route{regexp.MustCompile(re), handler}
-        h.routes = append(h.routes, r)
-}
-
-func (h *RegexpHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-        for _, route := range h.routes {
-		fmt.Println("Trying to match to ", r.URL.String())
-                matches := route.re.MatchString(r.URL.String())
-                if matches == true {
-                        route.handler(rw, r)
-                        break
-                }
-        }
-}
-
