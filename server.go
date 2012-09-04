@@ -67,18 +67,20 @@ func reciever (psc redis.PubSubConn) {
 
 func handler(w http.ResponseWriter, r *http.Request) {
 
-	reg,_ := regexp.Compile("/subscribe(/)?\\?channel=[a-zA-Z0-9]+")
-	if reg.MatchString(r.URL.String()) {
-		subscribe_handler(w,r)
+	verify_exp ,_ := regexp.Compile("/subscribe/[a-zA-Z0-9_]+$")
+	channel_exp ,_ := regexp.Compile("/subscribe/")
+	if verify_exp.MatchString(r.URL.String()) == true {
+		loc := channel_exp.FindIndex([]byte(r.URL.String()))
+		channel := r.URL.String()[loc[1]:]
+		subscribe_handler(w, r, channel)
 	} else {
 		fmt.Fprintf(w, "Hi there, I love %s! %s", r.URL.Path[1:], r.URL.Query())
 	}
 }
 
-func subscribe_handler(w http.ResponseWriter, r *http.Request) {
+func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channel string) {
 
 	psc := redis.PubSubConn{connection}
-	request_channel := r.URL.Query().Get("channel")
 	channel_es, ok := channel_map[request_channel]
 	if ok == false {
 		channel_es = eventsource.New()
