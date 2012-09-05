@@ -76,12 +76,26 @@ func reciever (psc redis.PubSubConn) {
 	}
 }
 
+func removeDuplicates(a []string) []string {
+        result := []string{}
+        seen := map[string]int{}
+        for _, val := range a {
+                if _, ok := seen[val]; !ok {
+                        result = append(result, val)
+                        seen[val] = 1
+                }
+        }
+        return result
+}
+
+
 func handler(w http.ResponseWriter, r *http.Request) {
 
 	verify_exp ,_ := regexp.Compile("/subscribe/([a-zA-Z0-9_]+)(/[a-zA-Z0-9_]+)*$")
 	if verify_exp.MatchString(r.URL.String()) == true {
 		channel_list := r.URL.String()[11:]
 		channels := strings.Split(channel_list, "/")
+		channels = removeDuplicates(channels)
 		subscribe_handler(w, r, channels)
 	} else {
 		fmt.Fprintf(w, "Hi there, Try adding a subscription by doing a GET to /subscribe/<channel-name>")
