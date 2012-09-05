@@ -6,11 +6,12 @@
 			{
 				channel_name = document.getElementById("channelName").value;
 				if (!!window.EventSource) {
-					var source = new EventSource('http://localhost:8080/subscribe/' + channel_name);
+					var source = new EventSource('http://localhost:8080/subscribe/' + channel_name + "/second_" + channel_name);
 					console.log("message listener added !!")
 					source.addEventListener('message', function(e) {
 						console.log(e.data);
-						}, false);
+						source.close()
+					}, false);
 				} 
 			}
 		</script>

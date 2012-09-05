@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"github.com/garyburd/redigo/redis"
 	eventsource "github.com/antage/eventsource/http"
 )
@@ -35,7 +36,7 @@ func dial() (redis.Conn, error) {
 func subscribe(psc redis.PubSubConn, channel string) bool {
 	err := psc.Subscribe(channel)
 	if err != nil {
-	//	panic(err)
+		panic(err)
 		return false
 	}
 	return true
@@ -44,7 +45,7 @@ func subscribe(psc redis.PubSubConn, channel string) bool {
 func unsubscribe(psc redis.PubSubConn, channel string) bool {
 	err := psc.Unsubscribe(channel)
 	if err != nil {
-	//	panic(err)
+		panic(err)
 		return false
 	}
 	return true
@@ -76,60 +77,68 @@ func reciever (psc redis.PubSubConn) {
 
 func handler(w http.ResponseWriter, r *http.Request) {
 
-	verify_exp ,_ := regexp.Compile("/subscribe/[a-zA-Z0-9_]+$")
-	channel_exp ,_ := regexp.Compile("/subscribe/")
+	verify_exp ,_ := regexp.Compile("/subscribe/([a-zA-Z0-9_]+)(/[a-zA-Z0-9_]+)*$")
 	if verify_exp.MatchString(r.URL.String()) == true {
-		loc := channel_exp.FindIndex([]byte(r.URL.String()))
-		channel := r.URL.String()[loc[1]:]
-		subscribe_handler(w, r, channel)
+		channel_list := r.URL.String()[11:]
+		channels := strings.Split(channel_list, "/")
+		subscribe_handler(w, r, channels)
 	} else {
 		fmt.Fprintf(w, "Hi there, Try adding a subscription by doing a GET to /subscribe/<channel-name>")
 	}
 }
 
-func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channel string) {
+func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels []string) {
 
-	psc := redis.PubSubConn{connection}
-	channel_es, ok := channel_map[request_channel]
-	if ok == false {
-		channel_es = eventsource.New()
-		channel_map[request_channel] = channel_es
-		subscribe(psc, request_channel)
+	connection := eventsource.GetConnection(w, r)
+	for _, request_channel := range request_channels {
+		channel_es, ok := channel_map[request_channel]
+		if ok == false {
+			psc := redis.PubSubConn{redis_connection}
+			go reciever(psc)
+			channel_es = eventsource.New()
+			channel_map[request_channel] = channel_es
+			psc_map[request_channel] = psc
+			subscribe(psc, request_channel)
+		}
+		channel_es.AddConsumer(connection)
 	}
 
 	/*This is a blocking call ! keep this as the end*/
-	channel_es.ServeHTTP(w, r)
-	if channel_es.ConsumersCount() == 1 {
-		go func () {
+	eventsource.ServeHTTP(connection)
+	for _, request_channel := range request_channels {
+		channel_es,_ := channel_map[request_channel]
+		channel_es.RemoveConsumer(connection)
+		if channel_es.ConsumersCount() <= 1 {
 			for {
 				if channel_es.ConsumersCount() == 0 {
 					channel_es.Close()
 					delete (channel_map, request_channel)
-					unsubscribe(psc, request_channel)
-					return
+					unsubscribe(psc_map[request_channel], request_channel)
+					delete (psc_map, request_channel)
+					break
 				}
 			}
-		} ()
+		}
 	}
 }
 
-var connection redis.Conn
+var redis_connection redis.Conn
 var channel_map map[string]eventsource.EventSource
+var psc_map map[string]redis.PubSubConn
 
 func main() {
 	var err error
-	connection, err = dial()
+	redis_connection, err = dial()
 	if err != nil {
 		panic(err)
 	}
-	defer connection.Close()
+	defer redis_connection.Close()
 	channel_map = make(map[string]eventsource.EventSource)
+	psc_map = make(map[string]redis.PubSubConn)
 
-	psc := redis.PubSubConn{connection}
 	// This goroutine receives and prints pushed messages from the server. The
 	// goroutine exits when the connection is unsubscribed from all channels or
 	// there is an error.
-	go reciever(psc)
 
 	http.HandleFunc("/", handler)
 
