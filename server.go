@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"github.com/garyburd/redigo/redis"
 	eventsource "github.com/rhishikeshj/eventsource/http"
 )
@@ -98,6 +99,7 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 
 	connection := eventsource.GetConnection(w, r)
 	for _, request_channel := range request_channels {
+		map_mutex.Lock()
 		channel_es, ok := channel_map[request_channel]
 		if ok == false {
 			psc := redis.PubSubConn{redis_connection}
@@ -105,6 +107,7 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 			channel_es = eventsource.New()
 			channel_map[request_channel] = channel_es
 			psc_map[request_channel] = psc
+			map_mutex.Unlock()
 			subscribe(psc, request_channel)
 		}
 		channel_es.AddConsumer(connection)
@@ -116,7 +119,9 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 		channel_es,_ := channel_map[request_channel]
 		if channel_es.ConsumersCount() == 1 {
 			channel_es.RemoveConsumer(connection)
+			map_mutex.Lock()
 			cleanup_connection(channel_es, request_channel)
+			map_mutex.Unlock()
 		} else {
 			channel_es.RemoveConsumer(connection)
 		}
@@ -126,6 +131,7 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 var redis_connection redis.Conn
 var channel_map map[string]eventsource.EventSource
 var psc_map map[string]redis.PubSubConn
+var map_mutex sync.Mutex
 
 func main() {
 	var err error
