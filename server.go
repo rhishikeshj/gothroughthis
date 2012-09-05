@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"github.com/garyburd/redigo/redis"
-	eventsource "github.com/antage/eventsource/http"
+	eventsource "github.com/rhishikeshj/eventsource/http"
 )
 
 func dial() (redis.Conn, error) {
@@ -87,6 +87,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func cleanup_connection (channel_es eventsource.EventSource, request_channel string) {
+	channel_es.Close()
+	delete (channel_map, request_channel)
+	unsubscribe(psc_map[request_channel], request_channel)
+	delete (psc_map, request_channel)
+}
+
 func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels []string) {
 
 	connection := eventsource.GetConnection(w, r)
@@ -107,17 +114,11 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 	eventsource.ServeHTTP(connection)
 	for _, request_channel := range request_channels {
 		channel_es,_ := channel_map[request_channel]
-		channel_es.RemoveConsumer(connection)
-		if channel_es.ConsumersCount() <= 1 {
-			for {
-				if channel_es.ConsumersCount() == 0 {
-					channel_es.Close()
-					delete (channel_map, request_channel)
-					unsubscribe(psc_map[request_channel], request_channel)
-					delete (psc_map, request_channel)
-					break
-				}
-			}
+		if channel_es.ConsumersCount() == 1 {
+			channel_es.RemoveConsumer(connection)
+			cleanup_connection(channel_es, request_channel)
+		} else {
+			channel_es.RemoveConsumer(connection)
 		}
 	}
 }
