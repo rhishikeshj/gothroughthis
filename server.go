@@ -121,9 +121,9 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 			channel_es = eventsource.New()
 			channel_map[request_channel] = channel_es
 			psc_map[request_channel] = psc
-			map_mutex.Unlock()
 			subscribe(psc, request_channel)
 		}
+		map_mutex.Unlock()
 		channel_es.AddConsumer(connection)
 	}
 

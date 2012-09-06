@@ -2,25 +2,31 @@
 <html>
 	<head>
 		<script>
+			var source = new EventSource("www.google.com")
 			function Subscribe()
 			{
 				channel_name = document.getElementById("channelName").value;
 				if (!!window.EventSource) {
-					var source = new EventSource('http://localhost:8080/subscribe/' + channel_name + "/second_" + channel_name);
+					source = new EventSource('http://localhost:8080/subscribe/' + channel_name + "/second_" + channel_name);
 					console.log("message listener added !!")
 					source.addEventListener('message', function(e) {
 						console.log(e.data);
-						source.close()
 					}, false);
 				} 
 			}
+			function UnSubscribe()
+			{
+				source.close()
+			}
+
 		</script>
 	</head>
 	<body>
 
 		<h1>My First JavaScript</h1>
 		<input type="TEXT" id="channelName"><BR><BR>
-		<button type="button" onclick="Subscribe()">Display Date</button>
+		<button type="button" onclick="Subscribe()">Subscribe</button>
+		<button type="button" onclick="UnSubscribe()">Unsubscribe</button>
 	</body>
 </html> 
 
