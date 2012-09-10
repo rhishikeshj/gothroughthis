@@ -54,7 +54,11 @@ func unsubscribe(psc redis.PubSubConn, channel string) bool {
 
 func reciever (psc redis.PubSubConn) {
 	for {
-		switch n := psc.Receive().(type) {
+		receive_mutex.Lock()
+		data := psc.Receive()
+		receive_mutex.Unlock()
+
+		switch n := data.(type) {
 			case redis.Message:
 				fmt.Printf("%s: message: %s\n", n.Channel, n.Data)
 				channel_es,ok := channel_map[n.Channel]
@@ -145,7 +149,7 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 var redis_connection redis.Conn
 var channel_map map[string]eventsource.EventSource
 var psc_map map[string]redis.PubSubConn
-var map_mutex sync.Mutex
+var map_mutex, receive_mutex sync.Mutex
 
 func main() {
 	var err error
