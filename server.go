@@ -2,80 +2,23 @@ package main
 
 import (
 	"fmt"
-	"errors"
 	"net/http"
 	"regexp"
 	"strings"
 	"sync"
-	"github.com/garyburd/redigo/redis"
 	eventsource "github.com/rhishikeshj/eventsource/http"
+	"container/list"
 )
 
-func dial() (redis.Conn, error) {
-        c, err := redis.Dial("tcp", ":6379")
-        if err != nil {
-                return nil, err
-        }
 
-        _, err = c.Do("SELECT", "9")
-        if err != nil {
-                return nil, err
-        }
-
-        n, err := redis.Int(c.Do("DBSIZE"))
-        if err != nil {
-                return nil, err
-        }
-
-        if n != 0 {
-                return nil, errors.New("Database #9 is not empty, test can not continue")
-        }
-
-        return c, nil
-}
-
-func subscribe(psc redis.PubSubConn, channel string) bool {
-	err := psc.Subscribe(channel)
-	if err != nil {
-		panic(err)
-		return false
-	}
-	return true
-}
-
-func unsubscribe(psc redis.PubSubConn, channel string) bool {
-	err := psc.Unsubscribe(channel)
-	if err != nil {
-		panic(err)
-		return false
-	}
-	return true
-}
-
-func reciever (psc redis.PubSubConn) {
+func reciever (data_channel_name string) {
+	fmt.Println("Adding a receiver for " + data_channel_name)
+	data_channel := channel_map[data_channel_name]
+	connections_list := connections_map[data_channel_name]
 	for {
-		receive_mutex.Lock()
-		data := psc.Receive()
-		receive_mutex.Unlock()
-
-		switch n := data.(type) {
-			case redis.Message:
-				fmt.Printf("%s: message: %s\n", n.Channel, n.Data)
-				channel_es,ok := channel_map[n.Channel]
-				if ok == false {
-					// error
-					return
-				} else {
-					channel_es.SendMessage(string(n.Data), "","")
-				}
-			case redis.Subscription:
-				fmt.Printf("%s: %s %d\n", n.Channel, n.Kind, n.Count)
-				if n.Count == 0 {
-					return
-				}
-			case error:
-				fmt.Printf("error: %v\n", n)
-				return
+		data := <-data_channel
+		for i := connections_list.Front(); i != nil; i = i.Next() {
+			fmt.Println("Got this as data", data, "for channel : " + data_channel_name, " which i will write on connections : ", i.Value)
 		}
 	}
 }
@@ -95,22 +38,25 @@ func removeDuplicates(a []string) []string {
 
 func handler(w http.ResponseWriter, r *http.Request) {
 
-	verify_exp ,_ := regexp.Compile("/subscribe/([a-zA-Z0-9_]+)(/[a-zA-Z0-9_]+)*$")
-	if verify_exp.MatchString(r.URL.String()) == true {
+	subscribe_exp ,_ := regexp.Compile("/subscribe/([a-zA-Z0-9_]+)(/[a-zA-Z0-9_]+)*$")
+	publish_exp ,_ := regexp.Compile("/publish/([a-zA-Z0-9_]+)(/[a-zA-Z0-9_]+)*$")
+	if subscribe_exp.MatchString(r.URL.String()) == true {
 		channel_list := r.URL.String()[11:]
 		channels := strings.Split(channel_list, "/")
 		channels = removeDuplicates(channels)
 		subscribe_handler(w, r, channels)
+	} else if publish_exp.MatchString(r.URL.String()) == true {
+		fmt.Println(r.URL.String())
+		channel_list := r.URL.String()[9:]
+		channels := strings.Split(channel_list, "/")
+		channels = removeDuplicates(channels)
+		pub_channel := channels[0]
+		fmt.Println(pub_channel)
+		data_channel := channel_map[pub_channel]
+		data_channel <- r.FormValue("data")
 	} else {
-		fmt.Fprintf(w, "Hi there, Try adding a subscription by doing a GET to /subscribe/<channel-name>")
+		fmt.Println(w, "Hi there, Try adding a subscription by doing a GET to /subscribe/<channel-name>")
 	}
-}
-
-func cleanup_connection (channel_es eventsource.EventSource, request_channel string) {
-	channel_es.Close()
-	delete (channel_map, request_channel)
-	unsubscribe(psc_map[request_channel], request_channel)
-	delete (psc_map, request_channel)
 }
 
 func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels []string) {
@@ -118,48 +64,30 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 	connection := eventsource.GetConnection(w, r)
 	for _, request_channel := range request_channels {
 		map_mutex.Lock()
-		channel_es, ok := channel_map[request_channel]
+		_, ok := channel_map[request_channel]
+
 		if ok == false {
-			psc := redis.PubSubConn{redis_connection}
-			go reciever(psc)
-			channel_es = eventsource.New()
-			channel_map[request_channel] = channel_es
-			psc_map[request_channel] = psc
-			subscribe(psc, request_channel)
+			data_channel := make(chan string)
+			channel_map[request_channel] = data_channel
+			connections_map [request_channel] = list.New()
+			fmt.Println("Creating a data channel for " + request_channel, data_channel, channel_map[request_channel])
+			go reciever(request_channel)
 		}
 		map_mutex.Unlock()
-		channel_es.AddConsumer(connection)
+		connections_map [request_channel].PushBack(connection)
 	}
 
 	/*This is a blocking call ! keep this as the end*/
 	eventsource.ServeHTTP(connection)
-	for _, request_channel := range request_channels {
-		channel_es,_ := channel_map[request_channel]
-		if channel_es.ConsumersCount() == 1 {
-			channel_es.RemoveConsumer(connection)
-			map_mutex.Lock()
-			cleanup_connection(channel_es, request_channel)
-			map_mutex.Unlock()
-		} else {
-			channel_es.RemoveConsumer(connection)
-		}
-	}
 }
 
-var redis_connection redis.Conn
-var channel_map map[string]eventsource.EventSource
-var psc_map map[string]redis.PubSubConn
+var channel_map map[string](chan string)
+var connections_map map[string]*list.List
 var map_mutex, receive_mutex sync.Mutex
 
 func main() {
-	var err error
-	redis_connection, err = dial()
-	if err != nil {
-		panic(err)
-	}
-	defer redis_connection.Close()
-	channel_map = make(map[string]eventsource.EventSource)
-	psc_map = make(map[string]redis.PubSubConn)
+	channel_map = make(map[string](chan string))
+	connections_map = make(map[string]*list.List)
 
 	// This goroutine receives and prints pushed messages from the server. The
 	// goroutine exits when the connection is unsubscribed from all channels or

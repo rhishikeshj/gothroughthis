@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"errors"
 	"strconv"
@@ -49,15 +50,26 @@ func subscribe(psc redis.PubSubConn, count int) bool {
 
 func publish (count int) {
 	for i:=0;i<count;i++{
-		redis_connection.Do("PUBLISH", "channel" + strconv.Itoa(i), "This is data on channel" + strconv.Itoa(i))
-		fmt.Println("Published to channel" + strconv.Itoa(i))
+		url_text := "http://localhost:8080/publish/example"
+		resp, err := http.PostForm(url_text, url.Values {"data" : {"This is data on example channel"}})
+		//redis_connection.Do("PUBLISH", "channel" + strconv.Itoa(i), "This is data on channel" + strconv.Itoa(i))
+		fmt.Println("Published to channel" + strconv.Itoa(i), resp, err)
+	}
+}
+
+func publish_ownchannel (count int) {
+	for i:=0;i<count;i++{
+		url_text := "http://localhost:8080/publish/own_channel"
+		resp, err := http.PostForm(url_text, url.Values {"data" : {"This is data on the self"}})
+		//redis_connection.Do("PUBLISH", "channel" + strconv.Itoa(i), "This is data on channel" + strconv.Itoa(i))
+		fmt.Println("Published to channel" + strconv.Itoa(i), resp, err)
 	}
 }
 
 
 var err error
 var redis_connection redis.Conn
-var request_count int = 250
+var request_count int = 1
 func main () {
 	//client := &http.Client{}
 	var wg sync.WaitGroup
@@ -73,7 +85,7 @@ func main () {
 	for i:=0;i<request_count;i++{
 	go func (i int) {
 		//url := "www.facebook.com"
-		url := "http://localhost:8080/subscribe/channel" + strconv.Itoa(i)
+		url := "http://localhost:8080/subscribe/own_channel"
 		resp, err := http.Get(url)
 		//	_, err = client.Do(req)
 			if err != nil {
@@ -87,4 +99,5 @@ func main () {
 	}
 	wg.Wait()
 	publish(request_count)
+	publish_ownchannel(request_count)
 }
