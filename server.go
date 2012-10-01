@@ -7,19 +7,17 @@ import (
 	"strings"
 	"sync"
 	eventsource "github.com/rhishikeshj/eventsource/http"
-	"container/list"
 )
 
 
 func reciever (data_channel_name string) {
 	fmt.Println("Adding a receiver for " + data_channel_name)
 	data_channel := channel_map[data_channel_name]
-	connections_list := connections_map[data_channel_name]
+	channel_es := event_source_map[data_channel_name]
 	for {
 		data := <-data_channel
-		for i := connections_list.Front(); i != nil; i = i.Next() {
-			fmt.Println("Got this as data", data, "for channel : " + data_channel_name, " which i will write on connections : ", i.Value)
-		}
+		channel_es.SendMessage(data, "", "")
+		fmt.Println("Got this as data", data, "for channel : " + data_channel_name)
 	}
 }
 
@@ -69,12 +67,12 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 		if ok == false {
 			data_channel := make(chan string)
 			channel_map[request_channel] = data_channel
-			connections_map [request_channel] = list.New()
+			event_source_map [request_channel] = eventsource.New()
 			fmt.Println("Creating a data channel for " + request_channel, data_channel, channel_map[request_channel])
 			go reciever(request_channel)
 		}
+		event_source_map [request_channel].AddConsumer(connection)
 		map_mutex.Unlock()
-		connections_map [request_channel].PushBack(connection)
 	}
 
 	/*This is a blocking call ! keep this as the end*/
@@ -82,12 +80,14 @@ func subscribe_handler(w http.ResponseWriter, r *http.Request, request_channels 
 }
 
 var channel_map map[string](chan string)
-var connections_map map[string]*list.List
+var event_source_map map[string]eventsource.EventSource
+
 var map_mutex, receive_mutex sync.Mutex
 
 func main() {
 	channel_map = make(map[string](chan string))
-	connections_map = make(map[string]*list.List)
+        event_source_map = make(map[string]eventsource.EventSource)
+
 
 	// This goroutine receives and prints pushed messages from the server. The
 	// goroutine exits when the connection is unsubscribed from all channels or
