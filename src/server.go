@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	eventsource "github.com/rhishikeshj/eventsource/http"
+	"gokaf"
 	"net/http"
 	"strings"
 	"sync"
@@ -90,6 +91,9 @@ func reciever(psc redis.PubSubConn, channel_map map[string]ServerChannel) {
 	}
 }
 
+func kafka_receiver(kafka_connection *gokaf.Client) {
+
+}
 func removeDuplicates(a []string) []string {
 	result := []string{}
 	seen := map[string]int{}
@@ -168,6 +172,7 @@ func subscribe_handler(
 }
 
 func main() {
+
 	redis_p_connection, err := dial()
 	if err != nil {
 		panic(err)
@@ -196,6 +201,23 @@ func main() {
 	}(redis_subscriber)
 
 	go reciever(redis_subscriber, channel_map)
+
+	/*
+		Kafka related code
+	*/
+
+	kafka_connection, err := gokaf.Connect(1, []string{"127.0.0.1:9092"})
+	topics, _ := kafka_connection.Topics()
+	for _, topic := range topics {
+		go func() {
+			kaf_consumer := gokaf.Consume(kafka_connection, topic, "group1", 0)
+			defer kaf_consumer.Consumer.Close()
+			for {
+				data := <-kaf_consumer.Channel
+				fmt.Println("The data on the channel ", topic, "is : ", string(data.Value), " and the offset is ", data.Offset)
+			}
+		}()
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		components := strings.Split(r.URL.Path[1:], "/")

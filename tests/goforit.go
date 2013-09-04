@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"time"
 )
 
 var err error
@@ -27,7 +28,7 @@ func main() {
 		for i := 0; i < number_of_channels; i++ {
 			go func(i int) {
 				ch_url := "http://localhost:8080/subscribe/channel" + strconv.Itoa(i)
-				_, err := http.Get(ch_url)
+				resp, err := http.Get(ch_url)
 				if err != nil {
 					fmt.Println("Error : ", err)
 				}
